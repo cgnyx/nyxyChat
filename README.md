@@ -1,5 +1,3 @@
-# Firebase Studio
+# NyxyChat  
 
-This is a NextJS starter in Firebase Studio.
-
-To get started, take a look at src/app/page.tsx.
+its a discord clone ig ...if i get it to work 
