@@ -23,16 +23,15 @@ const firebaseConfigValues = {
   appId: process.env[ENV_VAR_KEYS.appId],
 };
 
-// Log missing environment variables
+// Check for missing critical environment variables
 let missingCriticalVarsMessages: string[] = [];
 const criticalEnvVars: (keyof typeof ENV_VAR_KEYS)[] = ['apiKey', 'authDomain', 'projectId'];
 
 for (const key of criticalEnvVars) {
   const envVarName = ENV_VAR_KEYS[key];
   if (!firebaseConfigValues[key]) {
-    const message = `CRITICAL Firebase Config: Environment variable ${envVarName} for '${key}' is missing or empty.`;
-    console.error(message);
-    missingCriticalVarsMessages.push(`- ${envVarName}`);
+    // Removed individual console.error here; the main throw below will cover it.
+    missingCriticalVarsMessages.push(`- ${envVarName} (for ${key})`);
   }
 }
 
@@ -42,28 +41,35 @@ for (const key of otherEnvVars) {
     if (!firebaseConfigValues[key]) {
         const envVarName = ENV_VAR_KEYS[key];
         console.warn(
-            `Firebase Config: Environment variable ${envVarName} for '${key}' is missing or empty. ` +
-            "This might affect certain Firebase services."
+            `Firebase Config: Optional environment variable ${envVarName} for '${key}' is missing or empty. ` +
+            "This might affect certain Firebase services if they are used."
         );
     }
 }
 
 if (missingCriticalVarsMessages.length > 0) {
-  const fullMessage = "ERROR: Critical Firebase environment variables are missing. Firebase initialization cannot proceed. " +
-                      "Please ensure the following are correctly set in your .env.local file or environment configuration:\n" +
-                      missingCriticalVarsMessages.join("\n");
-  console.error(fullMessage);
-  // Throw an error to prevent the application from attempting to initialize Firebase with incomplete critical config.
-  throw new Error(fullMessage);
+  const detailedInstructions =
+    "CRITICAL CONFIGURATION ERROR: Firebase initialization failed because essential environment variables are missing.\n\n" +
+    "Please take the following steps:\n" +
+    "1. Ensure a file named '.env.local' exists in the root directory of your project.\n" +
+    "   If not, you can copy '.env.local.example' to '.env.local'.\n" +
+    "2. Open '.env.local' and verify that all `NEXT_PUBLIC_FIREBASE_*` variables are present.\n" +
+    "3. Replace placeholder values (e.g., 'YOUR_API_KEY_HERE') with your actual Firebase project credentials.\n" +
+    "   You can find these in your Firebase console: Project settings > General > Your apps > (select your web app) > SDK setup and configuration.\n" +
+    "4. IMPORTANT: After creating or modifying the '.env.local' file, YOU MUST RESTART your Next.js development server for the changes to take effect.\n\n" +
+    "The following critical Firebase environment variables are missing or empty:\n" +
+    missingCriticalVarsMessages.join("\n");
+
+  console.error(detailedInstructions); // Log detailed instructions to console as well.
+  throw new Error(detailedInstructions); // This will be caught by Next.js and shown on the error page.
 }
 
 // If we reach here, all CRITICAL env vars should be present as strings.
-// The issue might be that they are present but their VALUES are INCORRECT.
 const firebaseConfig = {
-  apiKey: firebaseConfigValues.apiKey!, // Non-null assertion: presence checked above
-  authDomain: firebaseConfigValues.authDomain!, // Non-null assertion
-  projectId: firebaseConfigValues.projectId!, // Non-null assertion
-  storageBucket: firebaseConfigValues.storageBucket, // These can be undefined if not set, Firebase handles defaults or they might not be used
+  apiKey: firebaseConfigValues.apiKey!,
+  authDomain: firebaseConfigValues.authDomain!,
+  projectId: firebaseConfigValues.projectId!,
+  storageBucket: firebaseConfigValues.storageBucket,
   messagingSenderId: firebaseConfigValues.messagingSenderId,
   appId: firebaseConfigValues.appId,
 };
@@ -72,26 +78,24 @@ let app: FirebaseApp;
 if (!getApps().length) {
   try {
     app = initializeApp(firebaseConfig);
-  } catch (e: any) { // Catch specific FirebaseError or generic error
+  } catch (e: any) {
     let detailedMessage: string;
     if (e.code === "auth/invalid-api-key" || (e.message && String(e.message).includes("invalid-api-key"))) {
         detailedMessage = `Firebase initialization failed with an "invalid-api-key" error. ` +
                           `This usually means the NEXT_PUBLIC_FIREBASE_API_KEY environment variable has an incorrect value or is not properly configured for your Firebase project. ` +
-                          `Please double-check its value in your .env.local file (or environment configuration) and ensure it matches the Web API Key from your Firebase project settings (Project settings > General > Your apps > Web apps > SDK setup and configuration). ` +
+                          `Please double-check its value in your .env.local file (or environment configuration) and ensure it matches the Web API Key from your Firebase project settings. ` +
                           `Original error: ${e.message}`;
     } else {
-        detailedMessage = `Firebase initialization failed. This could be due to incorrect or missing Firebase environment variables (those starting with NEXT_PUBLIC_FIREBASE_*). ` +
-                          `Please verify all Firebase configuration values in your .env.local file or environment configuration. Original error: ${e.message}`;
+        detailedMessage = `Firebase initialization failed. This could be due to incorrect Firebase configuration values in your .env.local file. ` +
+                          `Please verify all NEXT_PUBLIC_FIREBASE_* values. Original error: ${e.message}`;
     }
-    console.error(detailedMessage, e); // Log the error object itself for more details if needed
+    console.error(detailedMessage, e);
     throw new Error(detailedMessage);
   }
 } else {
   app = getApps()[0];
 }
 
-// These will fail if 'app' isn't initialized correctly.
-// The try-catch above for initializeApp should prevent these from running if app init fails.
 const auth: Auth = getAuth(app);
 const db: Firestore = getFirestore(app);
 const storage: FirebaseStorage = getStorage(app);
